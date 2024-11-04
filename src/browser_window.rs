@@ -1,3 +1,5 @@
+pub mod webview;
+use std::sync::Arc;
 use napi::{Either, Result};
 use napi_derive::*;
 use tao::{
@@ -5,8 +7,9 @@ use tao::{
   event_loop::EventLoop,
   window::{Fullscreen, Icon, ProgressBarState, Window, WindowBuilder},
 };
-use wry::{http::Request, Rect, WebView, WebViewBuilder};
+use wry::{http::Request, Rect, WebViewBuilder};
 
+use webview::Webview;
 // #[cfg(target_os = "windows")]
 // use tao::platform::windows::IconExtWindows;
 
@@ -129,12 +132,54 @@ pub struct BrowserWindowOptions {
   pub back_forward_navigation_gestures: Option<bool>,
 }
 
+#[napi(object)]
+pub struct WebviewOptions {
+  /// The URL to load.
+  pub url: Option<String>,
+  /// The HTML content to load.
+  pub html: Option<String>,
+  /// The width of the window.
+  pub width: Option<f64>,
+  /// The height of the window.
+  pub height: Option<f64>,
+  /// The x position of the window.
+  pub x: Option<f64>,
+  /// The y position of the window.
+  pub y: Option<f64>,
+  /// Whether to enable devtools. Default is `true`.
+  pub enable_devtools: Option<bool>,
+  /// Whether the window is resizable. Default is `true`.
+  pub resizable: Option<bool>,
+  /// Whether the window is incognito. Default is `false`.
+  pub incognito: Option<bool>,
+  /// Whether the window is transparent. Default is `false`.
+  pub transparent: Option<bool>,
+  /// The window title.
+  pub title: Option<String>,
+  /// The default user agent.
+  pub user_agent: Option<String>,
+  /// The default theme.
+  pub theme: Option<JsTheme>,
+  /// The preload script
+  pub preload: Option<String>,
+  /// Whether the window is zoomable via hotkeys or gestures.
+  pub hotkeys_zoom: Option<bool>,
+  /// Whether the clipboard access is enabled.
+  pub clipboard: Option<bool>,
+  /// Whether the autoplay policy is enabled.
+  pub autoplay: Option<bool>,
+  /// Indicates whether horizontal swipe gestures trigger backward and forward page navigation.
+  pub back_forward_navigation_gestures: Option<bool>,
+  /// Whether the window is a child window.
+  pub is_child: Option<bool>,
+}
+
+
 #[napi]
 pub struct BrowserWindow {
   id: u32,
-  is_child_window: bool,
   window: Window,
-  webview: WebView,
+  ipc_handler: Arc<dyn Fn(Request<String>) + 'static + Send + Sync>,
 }
 
 #[napi]
@@ -143,8 +188,7 @@ impl BrowserWindow {
     event_loop: &EventLoop<()>,
     options: Option<BrowserWindowOptions>,
     id: u32,
-    child: bool,
-    ipc_handler: impl Fn(Request<String>) + 'static,
+    ipc_handler: impl Fn(Request<String>) + 'static + Send + Sync,
   ) -> Result<Self> {
     let options = options.unwrap_or(BrowserWindowOptions {
       url: None,
@@ -180,10 +224,41 @@ impl BrowserWindow {
       )
     })?;
 
-    let mut webview = if child {
-      WebViewBuilder::new_as_child(&window)
+    Ok(Self {
+      window,
+      id,
+      ipc_handler: Arc::new(ipc_handler),
+    })
+  }
+
+  #[napi]
+  /// Create a new webview.
+  pub fn create_webview(&self, options: Option<WebviewOptions>) -> Result<Webview> {
+    let options = options.unwrap_or(WebviewOptions {
+      url: None,
+      html: None,
+      width: None,
+      height: None,
+      x: None,
+      y: None,
+      enable_devtools: None,
+      resizable: None,
+      incognito: None,
+      transparent: None,
+      title: Some("WebviewJS".to_string()),
+      user_agent: None,
+      theme: None,
+      preload: None,
+      autoplay: None,
+      back_forward_navigation_gestures: None,
+      clipboard: None,
+      hotkeys_zoom: None,
+      is_child: None,
+    });
+    let mut webview = if options.is_child.unwrap_or(false) {
+      WebViewBuilder::new_as_child(&self.window)
     } else {
-      WebViewBuilder::new(&window)
+      WebViewBuilder::new(&self.window)
     };
 
     webview = webview
@@ -197,7 +272,6 @@ impl BrowserWindow {
         .into(),
       })
       .with_incognito(options.incognito.unwrap_or(false));
-
     if let Some(preload) = options.preload {
       webview = webview.with_initialization_script(&preload);
     }
@@ -249,7 +323,8 @@ impl BrowserWindow {
       webview = webview.with_url(&url);
     }
 
-    webview = webview.with_ipc_handler(ipc_handler);
+    // webview = webview.with_ipc_handler(Arc::clone(&self.ipc_handler));
+
 
     let webview = webview.build().map_err(|e| {
       napi::Error::new(
@@ -257,19 +332,7 @@ impl BrowserWindow {
         format!("Failed to create webview: {}", e),
       )
     })?;
-
-    Ok(Self {
-      window,
-      webview,
-      id,
-      is_child_window: child,
-    })
-  }
-
-  #[napi(getter)]
-  /// Whether or not the window is a child window.
-  pub fn is_child(&self) -> bool {
-    self.is_child_window
+    Ok(Webview { webview })
   }
 
   #[napi(getter)]
@@ -278,56 +341,7 @@ impl BrowserWindow {
     self.id
   }
 
-  #[napi]
-  /// Launch a print modal for this window's contents.
-  pub fn print(&self) -> Result<()> {
-    self.webview.print().map_err(|e| {
-      napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("Failed to print: {}", e),
-      )
-    })
-  }
 
-  #[napi]
-  /// Set webview zoom level.
-  pub fn zoom(&self, scale_facotr: f64) -> Result<()> {
-    self.webview.zoom(scale_facotr).map_err(|e| {
-      napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("Failed to zoom: {}", e),
-      )
-    })
-  }
-
-  #[napi]
-  /// Hides or shows the webview.
-  pub fn set_webview_visibility(&self, visible: bool) -> Result<()> {
-    self.webview.set_visible(visible).map_err(|e| {
-      napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("Failed to set webview visibility: {}", e),
-      )
-    })
-  }
-
-  #[napi]
-  /// Whether the devtools is opened.
-  pub fn is_devtools_open(&self) -> bool {
-    self.webview.is_devtools_open()
-  }
-
-  #[napi]
-  /// Opens the devtools.
-  pub fn open_devtools(&self) {
-    self.webview.open_devtools();
-  }
-
-  #[napi]
-  /// Closes the devtools.
-  pub fn close_devtools(&self) {
-    self.webview.close_devtools();
-  }
 
   #[napi]
   /// Whether the window is focused.
@@ -381,28 +395,6 @@ impl BrowserWindow {
   /// Whether the window is resizable.
   pub fn is_resizable(&self) -> bool {
     self.window.is_resizable()
-  }
-
-  #[napi]
-  /// Loads the given URL.
-  pub fn load_url(&self, url: String) -> Result<()> {
-    self.webview.load_url(&url).map_err(|e| {
-      napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("Failed to load URL: {}", e),
-      )
-    })
-  }
-
-  #[napi]
-  /// Loads the given HTML content.
-  pub fn load_html(&self, html: String) -> Result<()> {
-    self.webview.load_html(&html).map_err(|e| {
-      napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("Failed to load HTML: {}", e),
-      )
-    })
   }
 
   #[napi]
@@ -461,15 +453,6 @@ impl BrowserWindow {
     };
 
     self.window.set_theme(theme);
-  }
-
-  #[napi]
-  /// Evaluates the given JavaScript code.
-  pub fn evaluate_script(&self, js: String) -> Result<()> {
-    self
-      .webview
-      .evaluate_script(&js)
-      .map_err(|e| napi::Error::new(napi::Status::GenericFailure, format!("{}", e)))
   }
 
   // #[napi]

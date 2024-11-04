@@ -104,6 +104,46 @@ export interface BrowserWindowOptions {
   /** Indicates whether horizontal swipe gestures trigger backward and forward page navigation. */
   backForwardNavigationGestures?: boolean
 }
+export interface WebviewOptions {
+  /** The URL to load. */
+  url?: string
+  /** The HTML content to load. */
+  html?: string
+  /** The width of the window. */
+  width?: number
+  /** The height of the window. */
+  height?: number
+  /** The x position of the window. */
+  x?: number
+  /** The y position of the window. */
+  y?: number
+  /** Whether to enable devtools. Default is `true`. */
+  enableDevtools?: boolean
+  /** Whether the window is resizable. Default is `true`. */
+  resizable?: boolean
+  /** Whether the window is incognito. Default is `false`. */
+  incognito?: boolean
+  /** Whether the window is transparent. Default is `false`. */
+  transparent?: boolean
+  /** The window title. */
+  title?: string
+  /** The default user agent. */
+  userAgent?: string
+  /** The default theme. */
+  theme?: Theme
+  /** The preload script */
+  preload?: string
+  /** Whether the window is zoomable via hotkeys or gestures. */
+  hotkeysZoom?: boolean
+  /** Whether the clipboard access is enabled. */
+  clipboard?: boolean
+  /** Whether the autoplay policy is enabled. */
+  autoplay?: boolean
+  /** Indicates whether horizontal swipe gestures trigger backward and forward page navigation. */
+  backForwardNavigationGestures?: boolean
+  /** Whether the window is a child window. */
+  isChild?: boolean
+}
 export interface HeaderData {
   /** The key of the header. */
   key: string
@@ -144,11 +184,7 @@ export interface ApplicationOptions {
   /** The exit code of the application. Only applicable if control flow is set to `ExitWithCode`. */
   exitCode?: number
 }
-export declare class BrowserWindow {
-  /** Whether or not the window is a child window. */
-  get isChild(): boolean
-  /** The unique identifier of this window. */
-  get id(): number
+export declare class Webview {
   /** Launch a print modal for this window's contents. */
   print(): void
   /** Set webview zoom level. */
@@ -161,6 +197,18 @@ export declare class BrowserWindow {
   openDevtools(): void
   /** Closes the devtools. */
   closeDevtools(): void
+  /** Loads the given URL. */
+  loadUrl(url: string): void
+  /** Loads the given HTML content. */
+  loadHtml(html: string): void
+  /** Evaluates the given JavaScript code. */
+  evaluateScript(js: string): void
+}
+export declare class BrowserWindow {
+  /** Create a new webview. */
+  createWebview(options?: WebviewOptions | undefined | null): Webview
+  /** The unique identifier of this window. */
+  get id(): number
   /** Whether the window is focused. */
   isFocused(): boolean
   /** Whether the window is visible. */
@@ -179,10 +227,6 @@ export declare class BrowserWindow {
   isMinimized(): boolean
   /** Whether the window is resizable. */
   isResizable(): boolean
-  /** Loads the given URL. */
-  loadUrl(url: string): void
-  /** Loads the given HTML content. */
-  loadHtml(html: string): void
   /** Sets the window title. */
   setTitle(title: string): void
   /** Sets the window title. */
@@ -199,8 +243,6 @@ export declare class BrowserWindow {
   get theme(): Theme
   /** Sets the window theme. */
   setTheme(theme: Theme): void
-  /** Evaluates the given JavaScript code. */
-  evaluateScript(js: string): void
   /** Sets the window icon. */
   setWindowIcon(icon: Array<number> | string, width: number, height: number): void
   /** Removes the window icon. */

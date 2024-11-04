@@ -176,35 +176,7 @@ impl Application {
       self.handle_ipc_message(req, next_id);
     };
 
-    let window = BrowserWindow::new(event_loop.unwrap(), options, self.id_ref, false, cb)?;
-
-    Ok(window)
-  }
-
-  #[napi]
-  /// Creates a new browser window as a child window.
-  pub fn create_child_browser_window(
-    &'static mut self,
-    options: Option<BrowserWindowOptions>,
-  ) -> Result<BrowserWindow> {
-    let event_loop = self.event_loop.as_ref();
-
-    if event_loop.is_none() {
-      return Err(napi::Error::new(
-        napi::Status::GenericFailure,
-        "Event loop is not initialized",
-      ));
-    }
-
-    self.id_ref += 1;
-
-    let next_id = &self.id_ref;
-
-    let cb = |req: Request<String>| {
-      self.handle_ipc_message(req, next_id);
-    };
-
-    let window = BrowserWindow::new(event_loop.unwrap(), options, self.id_ref, true, cb)?;
+    let window = BrowserWindow::new(event_loop.unwrap(), options, self.id_ref, cb)?;
 
     Ok(window)
   }
